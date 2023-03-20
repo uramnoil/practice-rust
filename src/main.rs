@@ -1,4 +1,5 @@
-use std::{net::{SocketAddr}, sync::Arc};
+use std::{net::{SocketAddr}, sync::Arc, borrow::Borrow};
+use futures::StreamExt;
 use tokio::{io::{AsyncReadExt}, net::{TcpListener, TcpStream}, sync::{broadcast::{self, Sender}, Mutex}};
 
 #[tokio::main]
@@ -31,9 +32,14 @@ async fn main() {
             }
             // クライアント切断時
             Ok(addr) = close_rx.recv() => {
-                let index =
-                    clients.iter().position(|x| x.blocking_lock().peer_addr().unwrap() == addr).unwrap();
-                clients.remove(index);
+                let mut new_clients = vec![];
+                for client in clients {
+                    let client_addr = client.lock().await.peer_addr().unwrap();
+                    if client_addr != addr {
+                        new_clients.push(client);
+                    }
+                }
+                clients = new_clients;
             }
             // メッセージ受信時
             Ok(message) = message_rx.recv() => {
